@@ -1,4 +1,9 @@
 # Development candidate packaging only. This uploads Actions artifacts but never publishes a Release.
+#
+# Runner note: this fork has no macOS runner minutes. The gates that every
+# candidate depends on run on windows-latest so the Windows Setup.exe can be
+# produced; the macOS packaging job stays defined but skips unless the
+# repository variable KEYSMITH_MACOS_RUNNERS is "true".
 name: development-candidate
 
 on:
@@ -14,7 +19,7 @@ permissions:
 
 jobs:
   source-gates:
-    runs-on: macos-14
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,16 +35,17 @@ jobs:
       - run: npm ci
       - name: Require the default branch
         if: github.ref != 'refs/heads/main'
+        shell: bash
         run: |
           echo "Development candidates must be built from main." >&2
           exit 1
       - name: Verify version consistency
         env:
           EXPECTED_VERSION: ${{ inputs.version }}
-        run: python3 scripts/check-version.py --expected "$EXPECTED_VERSION"
+        run: python scripts/check-version.py --expected "$EXPECTED_VERSION"
       - run: npm test
       - run: npm run build
-      - run: python3 scripts/build-sidecars.py
+      - run: python scripts/build-sidecars.py
       - run: cargo fmt --all --check
         working-directory: src-tauri
       - run: cargo check
@@ -48,6 +54,7 @@ jobs:
         working-directory: src-tauri
 
   macos:
+    if: vars.KEYSMITH_MACOS_RUNNERS == 'true'
     needs: source-gates
     runs-on: macos-14
     steps:
