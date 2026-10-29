@@ -48,6 +48,15 @@ export const TOOL_CATALOG: ToolInfo[] = [
     cliPath: null,
   },
   {
+    id: "omp",
+    name: "OMP",
+    adapterVersion: "0.2.0",
+    available: true,
+    unavailableReason: null,
+    supportedScopes: ["user"],
+    cliPath: null,
+  },
+  {
     id: "dsh",
     name: "DSH",
     adapterVersion: "0.4.0",

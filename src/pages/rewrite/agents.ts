@@ -3,7 +3,8 @@ import type { RewriteView, ToolId } from "../../types";
 /** The agents input rewrite can connect to. pi has no relay connection. */
 /** dsh is left out like pi: dsh-keysmith has no prompt-rewriting mode, so a rule
  *  pack could be deployed but never rewritten for it. */
-export type RewriteAgent = Exclude<ToolId, "pi" | "dsh">;
+/** omp is left out for the same reason: it runs the pi adapter, which has no rewrite mode. */
+export type RewriteAgent = Exclude<ToolId, "pi" | "omp" | "dsh">;
 
 /** The agents in the order the page lists them. */
 export const REWRITE_AGENTS: RewriteAgent[] = ["claude", "codex", "zcode", "grok"];

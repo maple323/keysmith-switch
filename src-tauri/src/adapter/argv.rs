@@ -21,7 +21,8 @@ pub fn prepare(
         ToolKind::Codex => codex_args(command, isolated_home),
         ToolKind::Grok => grok_args(command, isolated_home),
         ToolKind::Zcode => zcode_args(command, isolated_home),
-        ToolKind::Pi => pi_args(command, isolated_home),
+        ToolKind::Pi => system_md_args(ToolKind::Pi, command, isolated_home),
+        ToolKind::Omp => system_md_args(ToolKind::Omp, command, isolated_home),
         ToolKind::Dsh => dsh_args(command, isolated_home),
     }
 }
@@ -431,9 +432,16 @@ fn push_preview_token(args: &mut Vec<String>, token: Option<&str>, tool: &str) -
     Ok(())
 }
 
-/// pi-keysmith with `--json` needs `--pi-dir` on every call, as an absolute path: unlike Grok
-/// it never falls back to a directory of its own choosing.
-fn pi_args(command: &AdapterCommand, home: Option<&Path>) -> Result<PreparedCommand> {
+/// The vendored pi adapter serves both pi and OMP (oh-my-pi): OMP is a pi fork that kept
+/// pi's instruction-file layout, so only the config directory differs. Every machine-readable
+/// call names `--pi-dir` explicitly as an absolute path — the flag keeps the adapter's own
+/// name because it is the pi CLI that reads it — so the adapter never falls back to a
+/// directory of its own choosing.
+fn system_md_args(
+    tool: ToolKind,
+    command: &AdapterCommand,
+    home: Option<&Path>,
+) -> Result<PreparedCommand> {
     let mut args: Vec<String> = Vec::new();
     let mut preview = true;
     let mut token = None;
@@ -492,12 +500,12 @@ fn pi_args(command: &AdapterCommand, home: Option<&Path>) -> Result<PreparedComm
         }
     }
     args.push("--pi-dir".into());
-    args.push(pi_dir(home)?);
+    args.push(system_md_dir(tool, home)?);
     if matches!(command, AdapterCommand::PlanActivate { .. }) {
         args.push("--dry-run".into());
     }
     if let Some(token) = token {
-        push_preview_token(&mut args, token, "pi")?;
+        push_preview_token(&mut args, token, tool.as_str())?;
         args.push("--yes".into());
     }
     args.push("--json".into());
@@ -506,19 +514,88 @@ fn pi_args(command: &AdapterCommand, home: Option<&Path>) -> Result<PreparedComm
     Ok(PreparedCommand { args, preview })
 }
 
-/// `<home>/.pi/agent`, from the isolated home when there is one, else the real home.
-fn pi_dir(home: Option<&Path>) -> Result<String> {
-    let root = match tool_dir(home, ".pi") {
-        Some(dir) => PathBuf::from(dir),
-        None => dirs::home_dir()
-            .ok_or_else(|| Error::invalid("pi needs a home folder to find ~/.pi/agent"))?
-            .join(".pi"),
+/// `<home>/.pi/agent` for pi, `<home>/.omp/agent` for OMP: from an isolated home when there is
+/// one, else from the user's real home.
+///
+/// OMP reads two variables that move that directory, and a deployment to a path OMP does not
+/// read would report success and change nothing:
+///
+/// - `PI_CODING_AGENT_DIR` is the agent directory itself. OMP's own `getAgentDir()` honours it,
+///   which is the lookup `SYSTEM.md` discovery uses, so it wins over everything else.
+/// - `PI_CONFIG_DIR` renames OMP's native config directory (`.omp` by default), so the agent
+///   directory becomes `~/<name>/agent`.
+///
+/// A value that is not a usable absolute path — or, for `PI_CONFIG_DIR`, not a plain directory
+/// name — falls back to the default rather than writing somewhere arbitrary. Both are ignored
+/// when an isolated home is supplied, so tests and `KEYSMITH_SWITCH_TOOL_HOME` stay hermetic.
+fn system_md_dir(tool: ToolKind, home: Option<&Path>) -> Result<String> {
+    let dir = match (tool, home) {
+        (ToolKind::Omp, None) => omp_agent_dir_from(
+            std::env::var(PI_AGENT_DIR_ENV).ok().as_deref(),
+            std::env::var(PI_CONFIG_DIR_ENV).ok().as_deref(),
+            &real_home(tool)?,
+        ),
+        (_, isolated) => {
+            let name = if tool == ToolKind::Omp { ".omp" } else { ".pi" };
+            match tool_dir(isolated, name) {
+                Some(root) => PathBuf::from(root).join("agent"),
+                None => real_home(tool)?.join(name).join("agent"),
+            }
+        }
     };
-    let dir = root.join("agent");
     if !dir.is_absolute() {
-        return Err(Error::invalid("pi --pi-dir must be an absolute path"));
+        return Err(Error::invalid(format!(
+            "{} agent directory must be an absolute path",
+            tool.as_str()
+        )));
     }
     Ok(dir.to_string_lossy().into_owned())
+}
+
+const PI_AGENT_DIR_ENV: &str = "PI_CODING_AGENT_DIR";
+const PI_CONFIG_DIR_ENV: &str = "PI_CONFIG_DIR";
+
+fn real_home(tool: ToolKind) -> Result<PathBuf> {
+    dirs::home_dir().ok_or_else(|| {
+        Error::invalid(format!(
+            "{} needs a home folder to find its agent directory",
+            tool.as_str()
+        ))
+    })
+}
+
+/// OMP's agent directory: `$PI_CODING_AGENT_DIR` when it names an absolute path, else
+/// `~/$PI_CONFIG_DIR/agent` when that is a plain directory name, else `~/.omp/agent`.
+fn omp_agent_dir_from(
+    agent_dir_env: Option<&str>,
+    config_dir_env: Option<&str>,
+    real_home: &Path,
+) -> PathBuf {
+    if let Some(raw) = agent_dir_env
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let path = expand_tilde(Path::new(raw), real_home);
+        if path.is_absolute() {
+            return path;
+        }
+    }
+    let name = config_dir_env
+        .map(str::trim)
+        .filter(|value| is_plain_dir_name(value))
+        .unwrap_or(".omp");
+    real_home.join(name).join("agent")
+}
+
+/// A single directory name under the home directory: no separators, no `.`/`..`, not empty.
+fn is_plain_dir_name(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && value != "."
+        && value != ".."
+        && !value.contains('/')
+        && !value.contains('\\')
+        && !value.contains('\0')
 }
 
 /// dsh-keysmith, like pi: every machine-readable call names `--dsh-dir` explicitly as an
@@ -800,6 +877,95 @@ mod tests {
             PathBuf::from("~bob/dsh")
         );
         assert_eq!(expand_tilde(Path::new("~"), &home()), home());
+    }
+
+    #[test]
+    fn omp_agent_dir_defaults_to_dot_omp() {
+        assert_eq!(
+            omp_agent_dir_from(None, None, &home()),
+            home().join(".omp").join("agent")
+        );
+        // Blank values are the same as unset ones.
+        assert_eq!(
+            omp_agent_dir_from(Some("  "), Some(""), &home()),
+            home().join(".omp").join("agent")
+        );
+    }
+
+    #[test]
+    fn omp_agent_dir_follows_the_agent_dir_variable_first() {
+        let agent = root("omp-agent");
+        // The agent directory itself wins over the config-directory name.
+        assert_eq!(
+            omp_agent_dir_from(Some(&agent.to_string_lossy()), Some(".custom"), &home()),
+            agent
+        );
+        // `~` means the real home, the way Python's expanduser reads it.
+        assert_eq!(
+            omp_agent_dir_from(Some("~/omp-agent"), None, &home()),
+            home().join("omp-agent")
+        );
+        // A relative value is not a usable target, so the default stands.
+        assert_eq!(
+            omp_agent_dir_from(Some("omp-agent"), None, &home()),
+            home().join(".omp").join("agent")
+        );
+    }
+
+    #[test]
+    fn omp_config_dir_renames_the_directory_but_only_as_a_plain_name() {
+        assert_eq!(
+            omp_agent_dir_from(None, Some(".custom"), &home()),
+            home().join(".custom").join("agent")
+        );
+        for bad in ["", ".", "..", "a/b", "a\\b", "x\0y"] {
+            assert_eq!(
+                omp_agent_dir_from(None, Some(bad), &home()),
+                home().join(".omp").join("agent"),
+                "{bad:?} must not become a directory name"
+            );
+        }
+    }
+
+    #[test]
+    fn pi_and_omp_isolated_homes_keep_their_own_dot_directory() {
+        // An isolated home is the hermetic shape: no `$PI_*` variable may reach into it.
+        assert_eq!(
+            system_md_dir(ToolKind::Pi, Some(&home())).unwrap(),
+            home().join(".pi").join("agent").to_string_lossy()
+        );
+        assert_eq!(
+            system_md_dir(ToolKind::Omp, Some(&home())).unwrap(),
+            home().join(".omp").join("agent").to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn omp_status_points_the_pi_adapter_at_the_omp_agent_dir() {
+        let command = AdapterCommand::Status {
+            scope: Scope::User,
+            project_dir: None,
+            name: None,
+        };
+        let prepared = prepare(ToolKind::Omp, &command, Some(&home())).unwrap();
+        let at = prepared
+            .args
+            .iter()
+            .position(|arg| arg == "--pi-dir")
+            .expect("OMP calls the pi adapter, which takes --pi-dir");
+        assert_eq!(
+            prepared.args[at + 1],
+            home().join(".omp").join("agent").to_string_lossy()
+        );
+        assert!(prepared.args.iter().any(|arg| arg == "--json"));
+        // Same argv shape as pi: the only difference is the directory.
+        let pi = prepare(ToolKind::Pi, &command, Some(&home())).unwrap();
+        let pi_at = pi.args.iter().position(|arg| arg == "--pi-dir").unwrap();
+        assert_eq!(
+            pi.args[pi_at + 1],
+            home().join(".pi").join("agent").to_string_lossy()
+        );
+        assert_eq!(prepared.args.len(), pi.args.len());
     }
 
     #[test]

@@ -25,7 +25,22 @@ pub fn normalize(
         ToolKind::Codex => normalize_codex(command, captured, envelope),
         ToolKind::Grok => normalize_grok(command, captured, envelope),
         ToolKind::Zcode => normalize_zcode(command, captured, envelope),
-        ToolKind::Pi => normalize_pi(command, captured, envelope),
+        ToolKind::Pi => normalize_system_md(
+            ToolKind::Pi,
+            PI_SCHEMA,
+            PI_MIN_VERSION,
+            command,
+            captured,
+            envelope,
+        ),
+        ToolKind::Omp => normalize_system_md(
+            ToolKind::Omp,
+            OMP_SCHEMA,
+            OMP_MIN_VERSION,
+            command,
+            captured,
+            envelope,
+        ),
         ToolKind::Dsh => normalize_dsh(command, captured, envelope),
     };
     // A CLI that stopped without a reason in its output still gave one on stderr.
@@ -331,6 +346,10 @@ fn normalize_grok(
 
 const PI_SCHEMA: &str = "pi-keysmith.envelope.v1";
 const PI_MIN_VERSION: (u64, u64, u64) = (0, 2, 0);
+/// OMP runs the vendored pi adapter, so it answers with pi's schema verbatim. The pin is
+/// kept as its own constant so OMP can diverge the day it ships a CLI of its own.
+const OMP_SCHEMA: &str = "pi-keysmith.envelope.v1";
+const OMP_MIN_VERSION: (u64, u64, u64) = (0, 2, 0);
 const DSH_SCHEMA: &str = "dsh-keysmith/v1";
 /// 0.2.1 is the first dsh-keysmith whose `--json` reports `state`, `dsh_dir_exists` and a
 /// `version` field. 0.2.0 shipped the contract without them and must not be accepted.
@@ -340,7 +359,20 @@ const DSH_MIN_VERSION: (u64, u64, u64) = (0, 4, 0);
 /// `pi-keysmith.envelope.v1`. Same shape as Grok's envelope, different wire: the state is in
 /// `status.*` (not `result.*`), `ok` is false for a valid `conflict` / `recovery-required`
 /// status, and every diagnostic is `"<code>: <sentence>"`.
-fn normalize_pi(command: &AdapterCommand, captured: &Captured, mut envelope: Envelope) -> Envelope {
+///
+/// Both pi and OMP read this wire, because OMP runs the vendored pi adapter against
+/// `<home>/.omp/agent`. `tool` only picks the label in user-visible messages; the schema and
+/// minimum version are passed in so OMP can pin its own the day it ships a CLI.
+fn normalize_system_md(
+    tool: ToolKind,
+    schema: &str,
+    min_version: (u64, u64, u64),
+    command: &AdapterCommand,
+    captured: &Captured,
+    mut envelope: Envelope,
+) -> Envelope {
+    let label = tool.as_str();
+    let min_text = format!("{}.{}.{}", min_version.0, min_version.1, min_version.2);
     if matches!(command, AdapterCommand::Version) {
         // argparse text (`pi-keysmith.py 0.2.0`), not an envelope.
         if let Some(version) = captured
@@ -358,13 +390,13 @@ fn normalize_pi(command: &AdapterCommand, captured: &Captured, mut envelope: Env
         Ok(value) => value,
         Err(error) => return envelope.fail(error),
     };
-    if json.get("schema").and_then(Value::as_str) != Some(PI_SCHEMA) {
-        return envelope.fail(format!("pi adapter did not answer with {PI_SCHEMA}"));
+    if json.get("schema").and_then(Value::as_str) != Some(schema) {
+        return envelope.fail(format!("{label} adapter did not answer with {schema}"));
     }
     let version = json.get("version").and_then(Value::as_str).unwrap_or("");
-    if !semver_at_least(version, PI_MIN_VERSION) {
+    if !semver_at_least(version, min_version) {
         return envelope.fail(format!(
-            "pi adapter {version} is too old; Keysmith Switch needs 0.2.0 or newer"
+            "{label} adapter {version} is too old; Keysmith Switch needs {min_text} or newer"
         ));
     }
     envelope.adapter_version = Some(normalize_version(version));
@@ -379,7 +411,7 @@ fn normalize_pi(command: &AdapterCommand, captured: &Captured, mut envelope: Env
     let target = json.get("target").cloned().unwrap_or(Value::Null);
     if let Some(dir) = target.get("pi_dir").and_then(Value::as_str) {
         if target.get("scope").and_then(Value::as_str) != Some("user") {
-            return envelope.fail("pi adapter reported a scope other than user");
+            return envelope.fail(format!("{label} adapter reported a scope other than user"));
         }
         envelope.target_paths.push(TargetPath {
             path: dir.to_string(),
@@ -435,7 +467,9 @@ fn normalize_pi(command: &AdapterCommand, captured: &Captured, mut envelope: Env
             }
             "drift" => ToolStatus::Drift,
             "active-aligned" => ToolStatus::Active,
-            other => return envelope.fail(format!("pi adapter reported unknown state {other}")),
+            other => {
+                return envelope.fail(format!("{label} adapter reported unknown state {other}"))
+            }
         };
     }
     envelope.recovery_required = status
@@ -541,12 +575,12 @@ fn normalize_pi(command: &AdapterCommand, captured: &Captured, mut envelope: Env
     if !envelope.ok {
         let has = |code: &str| diagnostics.iter().any(|(known, _)| known == code);
         if has("preview-token-mismatch") {
-            envelope.error = Some("pi changed since the preview; preview again".into());
+            envelope.error = Some(format!("{label} changed since the preview; preview again"));
         } else if has("lock-busy") {
-            envelope.error = Some("another pi-keysmith run is busy; try again".into());
+            envelope.error = Some(format!("another {label}-keysmith run is busy; try again"));
         } else if has("write-failed") || envelope.exit_code == 4 {
             envelope.recovery_required = true;
-            envelope.error = Some("pi write failed partway; recover first".into());
+            envelope.error = Some(format!("{label} write failed partway; recover first"));
         }
         if envelope.blockers.is_empty() {
             envelope.blockers = diagnostics

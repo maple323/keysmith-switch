@@ -9,6 +9,7 @@
     "grok": "Grok Build",
     "zcode": "ZCode",
     "pi": "pi",
+    "omp": "OMP",
     "dsh": "DSH",
     "settings": "设置",
     "about": "关于",

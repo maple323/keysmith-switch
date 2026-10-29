@@ -50,7 +50,7 @@ const MAX_ITEMS: usize = 200;
 const MAX_TAGS: usize = 8;
 const MAX_TAG_LEN: usize = 24;
 const LOCALES: [&str; 3] = ["zh-CN", "zh-TW", "en"];
-const TOOLS: [&str; 6] = ["claude", "codex", "grok", "zcode", "pi", "dsh"];
+const TOOLS: [&str; 7] = ["claude", "codex", "grok", "zcode", "pi", "omp", "dsh"];
 /// A rule pack for any agent other than Codex alone needs the app that rewrites for it.
 /// v0.4.0 only listed rule packs for exactly `["codex"]`.
 const RULE_CODEX_ONLY: &str = "codex";

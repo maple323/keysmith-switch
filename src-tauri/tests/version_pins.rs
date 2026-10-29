@@ -32,6 +32,15 @@ fn expected_versions_match_the_vendored_adapters() {
             .any(|line| line == format!("__version__ = \"{}\"", ToolKind::Pi.expected_version())),
         "pi-keysmith.py declares another __version__"
     );
+    // OMP runs the vendored pi adapter, so its pin rides on the same script and tag.
+    assert_pinned(
+        ToolKind::Omp,
+        pi.lines()
+            .find(|line| line.starts_with("__version__ = "))
+            .expect("pi-keysmith.py declares __version__")
+            .trim_start_matches("__version__ = ")
+            .trim_matches('"'),
+    );
     assert_pinned(ToolKind::Dsh, &vendored("dsh/VERSION"));
     let dsh = vendored("dsh/dsh-keysmith.py");
     assert!(

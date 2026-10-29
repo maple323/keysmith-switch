@@ -74,6 +74,8 @@ pub fn sidecar_basename(tool: ToolKind) -> &'static str {
         ToolKind::Grok => "keysmith-grok",
         ToolKind::Zcode => "keysmith-zcode",
         ToolKind::Pi => "keysmith-pi",
+        // OMP runs the vendored pi adapter, so it ships in pi's frozen sidecar.
+        ToolKind::Omp => "keysmith-pi",
         ToolKind::Dsh => "keysmith-dsh",
     }
 }
@@ -199,6 +201,7 @@ fn script_basename(tool: ToolKind) -> &'static str {
         ToolKind::Grok => "grok-keysmith.py",
         ToolKind::Zcode => "zcode-keysmith.py",
         ToolKind::Pi => "pi-keysmith.py",
+        ToolKind::Omp => "pi-keysmith.py",
         ToolKind::Dsh => "dsh-keysmith.py",
     }
 }

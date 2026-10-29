@@ -16,6 +16,7 @@ const SEED: Array<[ToolId, string, string, string[], number]> = [
   ["grok", "Grok 示例提示词", "Grok 的示例。", ["示例"], 20],
   ["zcode", "全栈脚手架", "为新项目生成最小可运行的全栈脚手架，并解释每个目录的用途。", ["脚手架"], 30],
   ["pi", "极简编码助手", "回答简短；改动前先读相关文件，改完运行测试。", ["编码"], 45],
+  ["omp", "OMP 示例提示词", "用 OMP 时先说明要改哪些文件，再实际修改。", ["示例"], 15],
   ["dsh", "DSH 示例提示词", "用 DSH 时先说明要改哪些文件，再实际修改。", ["示例"], 18],
 ];
 
@@ -307,7 +308,7 @@ async function handle(cmd: string, args: Record<string, any> = {}): Promise<unkn
     case "get_startup_report":
       return { firstRun: false, candidates: [], recovery: null, sidecar: { pythonRequired: false, tools: [] } };
     case "list_tools":
-      return { tools: (["claude", "codex", "grok", "zcode", "pi", "dsh"] as ToolId[]).map((id) => ({ id, name: id, adapterVersion: "mock", available: true, unavailableReason: null, supportedScopes: ["user"], cliPath: null })) };
+      return { tools: (["claude", "codex", "grok", "zcode", "pi", "omp", "dsh"] as ToolId[]).map((id) => ({ id, name: id, adapterVersion: "mock", available: true, unavailableReason: null, supportedScopes: ["user"], cliPath: null })) };
     case "harness_state": {
       const live = store.live[args.tool as ToolId];
       return delay({ tool: args.tool, deployed: Boolean(live), error: null, promptId: live?.id ?? null, promptTitle: live?.id ? live.title : null }, 380);
@@ -379,8 +380,9 @@ async function handle(cmd: string, args: Record<string, any> = {}): Promise<unkn
       const memories = tool === "codex" && !codexMemoriesGone ? { path: "/Users/you/.codex/memories", files: 2778, bytes: 41_943_040 } : null;
       const agentRunning = tool === "codex" && new URLSearchParams(window.location.search).has("codexrunning");
       const root = tool === "zcode" ? ".zcode" : `.${tool}`;
-      // pi and dsh keep their own state; nothing in this list is Switch's to clear.
-      const extras = tool === "pi" || tool === "dsh" ? [] : [
+      // pi, omp and dsh keep their own state: settings, credentials and sessions are
+      // not Keysmith's to clear, so this list stays empty for them.
+      const extras = tool === "pi" || tool === "omp" || tool === "dsh" ? [] : [
         { name: `${root}/rules`, path: `/Users/you/${root}/rules`, files: 4, bytes: 6_144, kind: "saved" },
         { name: `${root}/${tool === "claude" ? "settings.json" : "config.toml"}`, path: `/Users/you/${root}/config`, files: 1, bytes: 1_180, kind: "saved-without-login" },
         { name: `${root}/sessions`, path: `/Users/you/${root}/sessions`, files: 312, bytes: 12_582_912, kind: "erased" },

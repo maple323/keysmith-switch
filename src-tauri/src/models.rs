@@ -16,16 +16,18 @@ pub enum ToolKind {
     Grok,
     Zcode,
     Pi,
+    Omp,
     Dsh,
 }
 
 impl ToolKind {
-    pub const ALL: [ToolKind; 6] = [
+    pub const ALL: [ToolKind; 7] = [
         ToolKind::Claude,
         ToolKind::Codex,
         ToolKind::Grok,
         ToolKind::Zcode,
         ToolKind::Pi,
+        ToolKind::Omp,
         ToolKind::Dsh,
     ];
 
@@ -36,6 +38,7 @@ impl ToolKind {
             Self::Grok => "grok",
             Self::Zcode => "zcode",
             Self::Pi => "pi",
+            Self::Omp => "omp",
             Self::Dsh => "dsh",
         }
     }
@@ -47,6 +50,9 @@ impl ToolKind {
             Self::Grok => "0.8.0",
             Self::Zcode => "0.3.4",
             Self::Pi => "0.2.0",
+            // omp ships no CLI of its own: it speaks pi-keysmith's protocol and pins the
+            // same version, so a pi-keysmith bump moves both tools together.
+            Self::Omp => "0.2.0",
             Self::Dsh => "0.4.0",
         }
     }
@@ -58,6 +64,7 @@ impl ToolKind {
             Self::Grok => "KEYSMITH_SWITCH_GROK_CLI",
             Self::Zcode => "KEYSMITH_SWITCH_ZCODE_CLI",
             Self::Pi => "KEYSMITH_SWITCH_PI_CLI",
+            Self::Omp => "KEYSMITH_SWITCH_OMP_CLI",
             Self::Dsh => "KEYSMITH_SWITCH_DSH_CLI",
         }
     }
@@ -69,6 +76,10 @@ impl ToolKind {
             Self::Grok => "grok/grok-keysmith.py",
             Self::Zcode => "zcode/zcode-keysmith.py",
             Self::Pi => "pi/pi-keysmith.py",
+            // OMP (oh-my-pi) is a fork of pi that kept pi's instruction-file layout:
+            // `SYSTEM.md` under `<config-dir>/agent`. So it runs the vendored pi adapter
+            // with `--pi-dir <home>/.omp/agent`. See `adapter::argv::system_md_args`.
+            Self::Omp => "pi/pi-keysmith.py",
             Self::Dsh => "dsh/dsh-keysmith.py",
         }
     }
@@ -80,6 +91,7 @@ impl ToolKind {
             Self::Grok => "99-keysmith",
             Self::Zcode => "system-role",
             Self::Pi => "system-prompt",
+            Self::Omp => "system-prompt",
             // dsh-keysmith's own default: the name is recorded but addresses no path.
             Self::Dsh => "dsh-unrestricted",
         }
@@ -124,6 +136,7 @@ impl FromStr for ToolKind {
             "grok" => Ok(Self::Grok),
             "zcode" => Ok(Self::Zcode),
             "pi" => Ok(Self::Pi),
+            "omp" => Ok(Self::Omp),
             "dsh" => Ok(Self::Dsh),
             other => Err(Error::invalid(format!("unknown tool: {other}"))),
         }

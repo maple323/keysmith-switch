@@ -206,6 +206,16 @@ fn native_prompt_files(tool: ToolKind, home: &Path) -> Vec<PathBuf> {
                 Vec::new()
             };
         }
+        // OMP (oh-my-pi) is a pi fork and kept the layout: the same `SYSTEM.md`, under
+        // `~/.omp/agent` instead of `~/.pi/agent`. Everything else in that home stays out.
+        ToolKind::Omp => {
+            let system = home.join(".omp").join("agent").join("SYSTEM.md");
+            return if system.is_file() {
+                vec![system]
+            } else {
+                Vec::new()
+            };
+        }
         // dsh's home holds sessions, storages, provider settings and credentials.
         // 0.4.0 deploys the contract inside the profile plugin; a leftover
         // user-global AGENTS.md is still a prompt candidate.
@@ -429,6 +439,8 @@ fn infer_tool_from_path(path: &Path) -> Option<ToolKind> {
         Some(ToolKind::Zcode)
     } else if text.contains("/.pi/") || text.contains("\\.pi\\") {
         Some(ToolKind::Pi)
+    } else if text.contains("/.omp/") || text.contains("\\.omp\\") {
+        Some(ToolKind::Omp)
     } else if text.contains("/.dsh/") || text.contains("\\.dsh\\") {
         Some(ToolKind::Dsh)
     } else {

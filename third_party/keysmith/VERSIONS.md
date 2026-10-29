@@ -11,6 +11,7 @@ Keysmith Switch.
 | grok | grok/grok-keysmith.py | `d87def09` (`v0.8.0`) | v0.8.0 |
 | zcode | zcode/zcode-keysmith.py | `3c3bea8f994d3670c2cd571e9bd87449fc868788` (merged #44; v0.3.4 tag pending) | 0.3.4 |
 | pi | pi/pi-keysmith.py | `37f69cac` (`v0.2.0`) | v0.2.0 |
+| omp | pi/pi-keysmith.py (shared) | same pin as pi — see below | v0.2.0 |
 | dsh | dsh/dsh-keysmith.py | `c15f990` (merged #6; v0.4.0 tag pending) | v0.4.0 |
 
 ZCode 0.3.4 recognizes `supportsStorageStartup` in `resources/app.asar` on Windows,
@@ -25,6 +26,15 @@ passed. doctor and install stay on text. plan-deactivate and deactivate pass
 pi 0.2.0 (`Jia-Ethan/pi-keysmith`) emits `pi-keysmith.envelope.v1` with `--json`; its contract
 is `docs/json-contract.md` at the same tag. `pi/examples/system-prompt.md` is the CLI's
 bundled default prompt from that tag.
+
+omp (OMP / oh-my-pi, `can1357/oh-my-pi`) has no Keysmith CLI of its own and needs none: it is a
+fork of pi and kept pi's instruction layout, so its prompt is `SYSTEM.md` in the `agent` folder
+of its config directory (`~/.omp/agent`, or `~/<PI_CONFIG_DIR>/agent`). Switch therefore runs
+the pinned pi adapter above with `--pi-dir <home>/.omp/agent` and reads the pi envelope
+unchanged. Both variables OMP honours when it looks for `SYSTEM.md` — `PI_CODING_AGENT_DIR` (the
+agent directory itself) and `PI_CONFIG_DIR` (the config-directory name) — are honoured by Switch
+when it resolves that path. A pi-keysmith bump moves both pins together; nothing extra to freeze
+or ship.
 
 dsh 0.4.0 (`Jia-Ethan/dsh-keysmith`, merged [#6](https://github.com/Jia-Ethan/dsh-keysmith/pull/6))
 emits `dsh-keysmith/v1` with `--json` for deploy, `--status`, `--uninstall` and `--recover`.
