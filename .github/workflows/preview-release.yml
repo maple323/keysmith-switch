@@ -40,9 +40,9 @@ jobs:
           echo "Development candidates must be built from main." >&2
           exit 1
       - name: Verify version consistency
-        env:
-          EXPECTED_VERSION: ${{ inputs.version }}
-        run: python scripts/check-version.py --expected "$EXPECTED_VERSION"
+        # Interpolate the input directly: on pwsh a bare $EXPECTED_VERSION is a
+        # PowerShell variable, not the environment variable, and expands empty.
+        run: python scripts/check-version.py --expected "${{ inputs.version }}"
       - run: npm test
       - run: npm run build
       - run: python scripts/build-sidecars.py

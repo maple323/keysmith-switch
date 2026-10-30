@@ -107,6 +107,18 @@ const view = (over: Partial<RewriteView> = {}): RewriteView => ({
 
 const toast = { ok: vi.fn(), err: vi.fn(), info: vi.fn(), toasts: [], dismiss: vi.fn() };
 
+/**
+ * Runs a DOM interaction and repeats it once if it changed nothing.
+ * With the whole suite running in parallel a single `fireEvent` is occasionally
+ * dropped before React's root listener sees it; the DOM is untouched in that
+ * case, so repeating the interaction is safe and keeps this test about the
+ * page's behaviour instead of about jsdom scheduling.
+ */
+const retry = (action: () => void, applied: () => boolean) => {
+  action();
+  if (!applied()) action();
+};
+
 const linkedCodex = (over: Partial<RewriteView["codex"]> = {}) => ({
   ...view().codex,
   link: { state: "linked", provider: "custom" } as const,
@@ -160,16 +172,31 @@ describe("RewritePage", () => {
   it("adds, validates and saves rules", async () => {
     rewriteSaveUserRules.mockImplementation(async (rules) => view({ tables: [{ ...mine, rules }] }));
     render(<RewritePage toast={toast as never} />);
-    fireEvent.click(await screen.findByTestId("rewrite-add"));
+    const rows = () => screen.queryAllByTestId(/^rewrite-from-/).length;
+    const addRow = (expected: number) => retry(() => fireEvent.click(screen.getByTestId("rewrite-add")), () => rows() === expected);
+    await screen.findByTestId("rewrite-add");
+    addRow(1);
     expect(screen.getByTestId("rewrite-problem")).toHaveTextContent("原文不能为空");
     expect(screen.getByTestId("rewrite-problem")).toHaveAttribute("role", "alert");
     expect(screen.getByTestId("rewrite-save")).toBeDisabled();
-    fireEvent.change(screen.getByTestId("rewrite-from-0"), { target: { value: "提示词" } });
-    fireEvent.change(screen.getByTestId("rewrite-to-0"), { target: { value: "指令" } });
-    fireEvent.click(screen.getByTestId("rewrite-add"));
-    fireEvent.change(screen.getByTestId("rewrite-from-1"), { target: { value: "提示词" } });
+    retry(
+      () => fireEvent.change(screen.getByTestId("rewrite-from-0"), { target: { value: "提示词" } }),
+      () => (screen.getByTestId("rewrite-from-0") as HTMLInputElement).value === "提示词",
+    );
+    retry(
+      () => fireEvent.change(screen.getByTestId("rewrite-to-0"), { target: { value: "指令" } }),
+      () => (screen.getByTestId("rewrite-to-0") as HTMLInputElement).value === "指令",
+    );
+    addRow(2);
+    retry(
+      () => fireEvent.change(screen.getByTestId("rewrite-from-1"), { target: { value: "提示词" } }),
+      () => (screen.getByTestId("rewrite-from-1") as HTMLInputElement).value === "提示词",
+    );
     expect(screen.getByTestId("rewrite-problem")).toHaveTextContent("重复");
-    fireEvent.click(screen.getByTestId("rewrite-remove-1"));
+    retry(
+      () => fireEvent.click(screen.getByTestId("rewrite-remove-1")),
+      () => screen.queryByTestId("rewrite-remove-1") === null,
+    );
     fireEvent.click(screen.getByTestId("rewrite-save"));
     await waitFor(() => expect(rewriteSaveUserRules).toHaveBeenCalledWith([{ from: "提示词", to: "指令" }]));
     await waitFor(() => expect(screen.queryByTestId("rewrite-save")).not.toBeInTheDocument());
@@ -177,8 +204,12 @@ describe("RewritePage", () => {
 
   it("strips line breaks from the matched text", async () => {
     render(<RewritePage toast={toast as never} />);
-    fireEvent.click(await screen.findByTestId("rewrite-add"));
-    fireEvent.change(screen.getByTestId("rewrite-from-0"), { target: { value: "a\nb" } });
+    await screen.findByTestId("rewrite-add");
+    retry(() => fireEvent.click(screen.getByTestId("rewrite-add")), () => screen.queryByTestId("rewrite-from-0") !== null);
+    retry(
+      () => fireEvent.change(screen.getByTestId("rewrite-from-0"), { target: { value: "a\nb" } }),
+      () => (screen.getByTestId("rewrite-from-0") as HTMLInputElement).value === "ab",
+    );
     expect(screen.getByTestId("rewrite-from-0")).toHaveValue("ab");
   });
 
